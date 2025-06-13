@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Malayalam Translator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        
+        .mode-selector {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .mode-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 0 10px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        .mode-btn:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+        
+        .mode-btn.active {
+            background: #2196F3;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            background: #f8f9fa;
+        }
+        
+        .realtime-controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .record-btn {
+            background: #f44336;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.3s;
+            min-width: 150px;
+        }
+        
+        .record-btn:hover {
+            transform: scale(1.05);
+        }
+        
+        .record-btn.recording {
+            background: #FF5722;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .status {
+            text-align: center;
+            margin: 15px 0;
+            font-weight: bold;
+        }
+        
+        .status.connected { color: #4CAF50; }
+        .status.recording { color: #FF5722; }
+        .status.error { color: #f44336; }
+        
+        .results {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .result-item {
+            margin-bottom: 15px;
+            padding: 15px;
+            border-left: 4px solid #2196F3;
+            background: #f0f8ff;
+            border-radius: 5px;
+        }
+        
+        .result-item .english {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .result-item .malayalam {
+            color: #666;
+            font-size: 18px;
+            font-family: 'Noto Sans Malayalam', sans-serif;
+        }
+        
+        .result-item .timestamp {
+            font-size: 12px;
+            color: #999;
+            text-align: right;
+        }
+        
+        textarea {
+            width: 100%;
+            height: 120px;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        
+        .translate-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+        
+        .translate-btn:hover {
+            background: #1976D2;
+            transform: translateY(-2px);
+        }
+        
+        .translation-result {
+            background: #e8f5e8;
+            border: 2px solid #4CAF50;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 15px;
+            font-size: 18px;
+            font-family: 'Noto Sans Malayalam', sans-serif;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .audio-visualizer {
+            width: 100%;
+            height: 60px;
+            background: #000;
+            border-radius: 10px;
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+                justify-content: center;
+            color: white;
+            font-size: 14px;
+        }
+        
+        /* Real-time translation styles */
+        .translation-container {
+            position: relative;
+            margin-bottom: 20px;
+        }
+        
+        .translation-progress {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: #e9ecef;
+            display: none;
+        }
+        
+        .translation-progress-bar {
+            height: 100%;
+            background: #007bff;
+            width: 0;
+            transition: width 0.3s ease;
+        }
+        
+        .translation-stats {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        
+        .translation-error {
+            color: #dc3545;
+            margin-top: 5px;
+            display: none;
+        }
+        
+        .translation-success {
+            color: #28a745;
+            margin-top: 5px;
+            display: none;
+        }
+        
+        .text-input-container {
+            position: relative;
+        }
+        
+        .text-input-container textarea {
+            padding-right: 40px;
+        }
+        
+        .clear-button {
+            position: absolute;
+            right: 10px;
+            top: 10px;
+            cursor: pointer;
+            color: #6c757d;
+            display: none;
+        }
+        
+        .clear-button:hover {
+            color: #dc3545;
+        }
+        
+        .loading-spinner {
+            display: none;
+            margin-left: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Malayalam:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <h1>🎙️ Real-time Malayalam Translator</h1>
+        
+        <div class="mode-selector">
+            <button class="mode-btn active" onclick="switchMode('realtime')">Real-time Audio</button>
+            <button class="mode-btn" onclick="switchMode('text')">Text Translation</button>
+        </div>
+        
+        <!-- Real-time Audio Section -->
+        <div id="realtime-section" class="section">
+            <h2>Real-time Audio Translation</h2>
+            
+            <div class="realtime-controls">
+                <button id="recordBtn" class="record-btn" onclick="toggleRecording()">
+                    🎙️ Start Recording
+                </button>
+                <button id="clearBtn" class="record-btn" style="background:#888;margin-left:10px;" onclick="clearAllResults()">🗑️ Clear All</button>
+            </div>
+            
+            <div id="status" class="status">Click "Start Recording" to begin</div>
+            
+            <div class="audio-visualizer" id="visualizer">
+                Audio visualization will appear here
+            </div>
+            
+            <div class="results" id="results">
+                <p style="text-align: center; color: #666;">Real-time transcription results will appear here...</p>
+                </div>
+
+            <!-- Audio File Upload Section -->
+            <div class="section" style="margin-top:20px; background:#f1f7ff; padding: 20px; border-radius: 10px;">
+                <h3 style="margin-bottom: 15px;">Upload Audio File</h3>
+                <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="file" id="audioFile" accept="audio/*" style="flex: 1; padding: 8px; border: 2px solid #ddd; border-radius: 5px;">
+                        <button onclick="uploadAudioFile()" style="background: #2196F3; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; transition: background 0.3s;">
+                            <i class="fas fa-upload"></i> Upload
+                        </button>
+                    </div>
+                    <div id="uploadStatus" style="display: none; padding: 10px; border-radius: 5px; margin-top: 10px;"></div>
+                    <div id="uploadResult" style="display: none; background: white; padding: 15px; border-radius: 5px; margin-top: 10px; border: 1px solid #ddd;">
+                        <div style="margin-bottom: 10px;">
+                            <strong>English:</strong>
+                            <div id="uploadEnglish" style="margin-top: 5px;"></div>
+                        </div>
+                        <div>
+                            <strong>Malayalam:</strong>
+                            <div id="uploadMalayalam" style="margin-top: 5px; font-family: 'Noto Sans Malayalam', sans-serif;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Text Translation Section -->
+        <div id="text-section" class="section hidden">
+            <h2>Text Translation</h2>
+            <div class="translation-container">
+                <div class="translation-progress">
+                    <div class="translation-progress-bar"></div>
+                </div>
+                
+                <div class="text-input-container">
+                    <textarea id="englishText" class="form-control" rows="5" 
+                        placeholder="Enter English text to translate..."
+                        maxlength="100000"></textarea>
+                    <i class="fas fa-times clear-button" id="clearText"></i>
+                </div>
+                
+                <div class="translation-stats">
+                    <span id="charCount">0</span> characters, 
+                    <span id="wordCount">0</span> words
+                </div>
+                
+                <div class="translation-error" id="translationError"></div>
+                <div class="translation-success" id="translationSuccess"></div>
+                
+                <div class="mt-3">
+                    <button id="translateBtn" class="btn btn-primary">
+                        Translate
+                        <span class="loading-spinner">
+                            <span class="spinner"></span>
+                        </span>
+                    </button>
+            </div>
+            
+                <div class="mt-4">
+                    <h5>Translation</h5>
+                    <div id="englishResult" class="result-text"></div>
+                    <div id="malayalamResult" class="result-text"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Socket.IO connection
+        const socket = io();
+        
+        // Global variables
+        let isRecording = false;
+        let mediaRecorder = null;
+        let audioContext = null;
+        let stream = null;
+        let processor = null;
+        let currentAudio = null;
+        let currentAudioBtn = null;
+        
+        // Real-time translation variables
+        let translationTimeout = null;
+        let isTranslating = false;
+        const DEBOUNCE_DELAY = 1000; // 1 second delay for real-time translation
+        const MAX_REALTIME_LENGTH = 500; // Maximum length for real-time translation
+
+        // Initialize everything when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Page loaded, initializing translation...');
+            initializeTranslationUI();
+            
+            // Add click handler for translate button
+            const translateBtn = document.getElementById('translateBtn');
+            if (translateBtn) {
+                translateBtn.addEventListener('click', function() {
+                    console.log('Translate button clicked');
+                    translateText(false);
+                });
+            } else {
+                console.error('Translate button not found!');
+            }
+            
+            // Add input handler for real-time translation
+            const englishText = document.getElementById('englishText');
+            if (englishText) {
+                englishText.addEventListener('input', function() {
+                    console.log('Text input changed');
+                    updateTextStats();
+                    handleRealTimeTranslation();
+                });
+            } else {
+                console.error('English text input not found!');
+            }
+        });
+
+        // Socket event handlers
+        socket.on('connect', function() {
+            updateStatus('Connected to server', 'connected');
+        });
+        
+        socket.on('disconnect', function() {
+            updateStatus('Disconnected from server', 'error');
+        });
+        
+        socket.on('recording_started', function(data) {
+            updateStatus('Recording... Speak now!', 'recording');
+        });
+        
+        socket.on('recording_stopped', function(data) {
+            updateStatus('Recording stopped', 'connected');
+        });
+        
+        socket.on('transcription_result', function(data) {
+            addResult(data.english, data.malayalam, data.timestamp, false, data.audio_filename);
+        });
+        
+        socket.on('final_transcription_result', function(data) {
+            addResult(data.english, data.malayalam, data.timestamp, true, data.audio_filename);
+        });
+        
+        socket.on('error', function(data) {
+            updateStatus('Error: ' + data.message, 'error');
+        });
+        
+        // UI Functions
+        function switchMode(mode) {
+            const realtimeSection = document.getElementById('realtime-section');
+            const textSection = document.getElementById('text-section');
+            const buttons = document.querySelectorAll('.mode-btn');
+            
+            buttons.forEach(btn => btn.classList.remove('active'));
+            
+            if (mode === 'realtime') {
+                realtimeSection.classList.remove('hidden');
+                textSection.classList.add('hidden');
+                buttons[0].classList.add('active');
+            } else {
+                realtimeSection.classList.add('hidden');
+                textSection.classList.remove('hidden');
+                buttons[1].classList.add('active');
+            }
+        }
+        
+        function updateStatus(message, type = '') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+        }
+        
+        function addResult(english, malayalam, timestamp, isFinal = false, audio_filename = null) {
+            const results = document.getElementById('results');
+            const resultItem = document.createElement('div');
+            resultItem.className = 'result-item';
+            let playBtnHtml = '';
+            if (audio_filename) {
+                playBtnHtml = `<button onclick="playAudioResult('${audio_filename}', this)" style="margin-right:10px;">▶️</button>`;
+            }
+            if (isFinal) {
+                resultItem.style.background = '#e8f5e8';
+                resultItem.style.borderLeft = '4px solid #4CAF50';
+                resultItem.innerHTML = `
+                    <div style=\"font-weight:bold;color:#2196F3;\">Final Combined Result</div>
+                    <div>${playBtnHtml}<span class=\"english\">${english}</span></div>
+                    <div class=\"malayalam\">${malayalam}</div>
+                    <div class=\"timestamp\">${new Date(timestamp * 1000).toLocaleTimeString()}</div>
+                `;
+            } else {
+                resultItem.innerHTML = `
+                    <div>${playBtnHtml}<span class=\"english\">${english}</span></div>
+                    <div class=\"malayalam\">${malayalam}</div>
+                    <div class=\"timestamp\">${new Date(timestamp * 1000).toLocaleTimeString()}</div>
+                `;
+            }
+            // Remove placeholder text if it exists
+            if (results.children.length === 1 && results.children[0].tagName === 'P') {
+                results.innerHTML = '';
+            }
+            results.insertBefore(resultItem, results.firstChild);
+            // Limit to 20 results
+            while (results.children.length > 20) {
+                results.removeChild(results.lastChild);
+            }
+        }
+        
+        // Play/pause audio for a result
+        function playAudioResult(filename, btn) {
+            // If another audio is playing, pause it and reset its button
+            if (currentAudio && currentAudio !== btn.audio) {
+                currentAudio.pause();
+                if (currentAudioBtn) {
+                    currentAudioBtn.innerHTML = '▶️';
+                }
+            }
+            // If this audio is already playing, pause it
+            if (btn.audio && !btn.audio.paused) {
+                btn.audio.pause();
+                btn.innerHTML = '▶️';
+                return;
+            }
+            // Otherwise, play this audio
+            const audio = new Audio(`/audio/${filename}`);
+            btn.audio = audio;
+            audio.play();
+            btn.innerHTML = '⏸️';
+            currentAudio = audio;
+            currentAudioBtn = btn;
+            audio.onended = function() {
+                btn.innerHTML = '▶️';
+                if (currentAudio === audio) {
+                    currentAudio = null;
+                    currentAudioBtn = null;
+                }
+            };
+            audio.onpause = function() {
+                btn.innerHTML = '▶️';
+            };
+        }
+        
+        // Recording Functions
+        async function toggleRecording() {
+            if (!isRecording) {
+                await startRecording();
+            } else {
+                stopRecording();
+            }
+        }
+        
+        async function startRecording() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    } 
+                });
+                
+                audioContext = new AudioContext({ sampleRate: 16000 });
+                const source = audioContext.createMediaStreamSource(stream);
+                
+                // Create a script processor for real-time audio processing
+                processor = audioContext.createScriptProcessor(4096, 1, 1);
+                
+                processor.onaudioprocess = function(event) {
+                    if (isRecording) {
+                        const audioData = event.inputBuffer.getChannelData(0);
+                        const audioArray = new Float32Array(audioData);
+                        
+                        // Convert to base64 for transmission
+                        const int16Array = new Int16Array(audioArray.length);
+                        for (let i = 0; i < audioArray.length; i++) {
+                            int16Array[i] = Math.max(-32768, Math.min(32767, audioArray[i] * 32768));
+                        }
+                        
+                        const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(int16Array.buffer)));
+                        
+                        socket.emit('audio_chunk', {
+                            audio: base64Audio
+                        });
+                    }
+                };
+                
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+                
+                isRecording = true;
+                document.getElementById('recordBtn').textContent = '⏹️ Stop Recording';
+                document.getElementById('recordBtn').classList.add('recording');
+                
+                socket.emit('start_recording');
+                
+            } catch (error) {
+                updateStatus('Error accessing microphone: ' + error.message, 'error');
+            }
+        }
+        
+        function stopRecording() {
+                isRecording = false;
+            
+            if (processor) {
+                processor.disconnect();
+                processor = null;
+            }
+            
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            
+            document.getElementById('recordBtn').textContent = '🎙️ Start Recording';
+            document.getElementById('recordBtn').classList.remove('recording');
+            
+            socket.emit('stop_recording');
+        }
+        
+        // Text Translation
+        function initializeTranslationUI() {
+            const englishText = document.getElementById('englishText');
+            const clearButton = document.getElementById('clearText');
+            const translateBtn = document.getElementById('translateBtn');
+            const charCount = document.getElementById('charCount');
+            const wordCount = document.getElementById('wordCount');
+            
+            // Real-time character and word count
+            englishText.addEventListener('input', () => {
+                updateTextStats();
+                handleRealTimeTranslation();
+            });
+            
+            // Clear text button
+            clearButton.addEventListener('click', () => {
+                englishText.value = '';
+                clearButton.style.display = 'none';
+                updateTextStats();
+                clearTranslation();
+            });
+            
+            // Show/hide clear button
+            englishText.addEventListener('input', () => {
+                clearButton.style.display = englishText.value ? 'block' : 'none';
+            });
+            
+            // Manual translate button
+            translateBtn.addEventListener('click', () => {
+                if (!isTranslating) {
+                    translateText();
+                }
+            });
+        }
+
+        function updateTextStats() {
+            const text = document.getElementById('englishText').value;
+            const charCount = document.getElementById('charCount');
+            const wordCount = document.getElementById('wordCount');
+            
+            charCount.textContent = text.length;
+            wordCount.textContent = text.trim() ? text.trim().split(/\s+/).length : 0;
+        }
+
+        function handleRealTimeTranslation() {
+            const text = document.getElementById('englishText').value;
+            
+            // Clear previous timeout
+            if (translationTimeout) {
+                clearTimeout(translationTimeout);
+            }
+            
+            // Only do real-time translation for shorter texts
+            if (text.length > 0 && text.length <= MAX_REALTIME_LENGTH) {
+                translationTimeout = setTimeout(() => {
+                    if (!isTranslating) {
+                        translateText(true);
+                    }
+                }, DEBOUNCE_DELAY);
+            }
+        }
+
+        async function translateText(isRealtime = false) {
+            const text = document.getElementById('englishText').value.trim();
+            if (!text) {
+                showTranslationError('Please enter text to translate');
+                return;
+            }
+
+            if (isTranslating) {
+                return;
+            }
+
+            isTranslating = true;
+            showLoading(true);
+            showTranslationError('');
+            showTranslationSuccess('');
+            
+            try {
+                console.log('Sending translation request for text:', text);
+                const response = await fetch('/translate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: text
+                    }),
+                });
+                
+                console.log('Received response:', response.status);
+                const data = await response.json();
+                console.log('Translation data:', data);
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                // Update progress if available
+                if (data.stats) {
+                    updateTranslationProgress(data.stats);
+                }
+
+                // Update results
+                document.getElementById('englishResult').textContent = text;
+                document.getElementById('malayalamResult').textContent = data.translated_text;
+                
+                if (!isRealtime) {
+                    showTranslationSuccess('Translation completed successfully');
+                }
+            } catch (error) {
+                console.error('Translation error:', error);
+                showTranslationError(error.message || 'Translation failed. Please try again.');
+            } finally {
+                isTranslating = false;
+                showLoading(false);
+            }
+        }
+
+        function updateTranslationProgress(stats) {
+            const progressBar = document.querySelector('.translation-progress-bar');
+            const progressContainer = document.querySelector('.translation-progress');
+            
+            if (stats.total_chunks > 1) {
+                progressContainer.style.display = 'block';
+                const progress = (stats.total_chunks - 1) / stats.total_chunks * 100;
+                progressBar.style.width = `${progress}%`;
+            } else {
+                progressContainer.style.display = 'none';
+                progressBar.style.width = '0%';
+            }
+        }
+
+        function showLoading(show) {
+            const spinner = document.querySelector('.loading-spinner');
+            const translateBtn = document.getElementById('translateBtn');
+            
+            spinner.style.display = show ? 'inline-block' : 'none';
+            translateBtn.disabled = show;
+        }
+
+        function showTranslationError(message) {
+            const errorDiv = document.getElementById('translationError');
+            errorDiv.textContent = message;
+            errorDiv.style.display = message ? 'block' : 'none';
+        }
+
+        function showTranslationSuccess(message) {
+            const successDiv = document.getElementById('translationSuccess');
+            successDiv.textContent = message;
+            successDiv.style.display = message ? 'block' : 'none';
+        }
+
+        function clearTranslation() {
+            document.getElementById('englishResult').textContent = '';
+            document.getElementById('malayalamResult').textContent = '';
+            document.querySelector('.translation-progress').style.display = 'none';
+            document.querySelector('.translation-progress-bar').style.width = '0%';
+            showTranslationError('');
+            showTranslationSuccess('');
+        }
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (isRecording) {
+                stopRecording();
+            }
+        });
+
+        function uploadAudioFile() {
+            const fileInput = document.getElementById('audioFile');
+            const file = fileInput.files[0];
+            const statusDiv = document.getElementById('uploadStatus');
+            const resultDiv = document.getElementById('uploadResult');
+            const englishDiv = document.getElementById('uploadEnglish');
+            const malayalamDiv = document.getElementById('uploadMalayalam');
+
+            // Reset previous results
+            statusDiv.style.display = 'none';
+            resultDiv.style.display = 'none';
+            englishDiv.textContent = '';
+            malayalamDiv.textContent = '';
+
+            if (!file) {
+                showUploadStatus('Please select an audio file.', 'error');
+                return;
+            }
+
+            // Validate file type
+            if (!file.type.startsWith('audio/')) {
+                showUploadStatus('Please select a valid audio file.', 'error');
+                return;
+            }
+
+            // Validate file size (max 10MB)
+            if (file.size > 10 * 1024 * 1024) {
+                showUploadStatus('File size should be less than 10MB.', 'error');
+                return;
+            }
+
+            showUploadStatus('Uploading and processing audio...', 'info');
+            
+            const formData = new FormData();
+            formData.append("audio", file);
+
+            fetch("/upload_audio", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showUploadStatus('Error: ' + data.error, 'error');
+                } else {
+                    showUploadStatus('Audio processed successfully!', 'success');
+                    resultDiv.style.display = 'block';
+                    englishDiv.textContent = data.english || 'No English text detected';
+                    malayalamDiv.textContent = data.malayalam || 'No Malayalam translation available';
+                }
+            })
+            .catch(err => {
+                showUploadStatus('Error processing audio: ' + err, 'error');
+            });
+        }
+
+        function showUploadStatus(message, type) {
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.style.display = 'block';
+            statusDiv.textContent = message;
+            
+            // Set background color based on type
+            switch(type) {
+                case 'error':
+                    statusDiv.style.backgroundColor = '#ffebee';
+                    statusDiv.style.color = '#c62828';
+                    break;
+                case 'success':
+                    statusDiv.style.backgroundColor = '#e8f5e9';
+                    statusDiv.style.color = '#2e7d32';
+                    break;
+                case 'info':
+                    statusDiv.style.backgroundColor = '#e3f2fd';
+                    statusDiv.style.color = '#1565c0';
+                    break;
+            }
+        }
+
+        function clearAllResults() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<p style="text-align: center; color: #666;">Real-time transcription results will appear here...</p>';
+        }
+    </script>
+</body>
+</html>
