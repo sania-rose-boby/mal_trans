@@ -101,8 +101,8 @@ def split_text(text, max_length=MAX_CHUNK_LENGTH):
             
         # If paragraph is too long, split it into sentences
         if len(paragraph) > max_length:
-            # Enhanced sentence splitting with more punctuation marks
-            sentences = re.split(r'(?<=[.!?;:])\s+', paragraph)
+            # Improved sentence splitting: handles all punctuation, multiple spaces, and ensures all text is included
+            sentences = re.findall(r'[^.!?;:]+[.!?;:]?', paragraph)
             
             for i, sentence in enumerate(sentences):
                 sentence = sentence.strip()

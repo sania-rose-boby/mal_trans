@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Real-time Malayalam Translator</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -105,7 +104,7 @@
         
         .status.connected { color: #4CAF50; }
         .status.recording { color: #FF5722; }
-        .status.error { color: #f44336; }
+        .status.error { color:rgb(243, 225, 224); }
         
         .results {
             background: white;
@@ -279,6 +278,43 @@
             animation: spin 1s linear infinite;
             display: inline-block;
         }
+        
+        .result-item.final .result-text {
+            color: #218838 !important;
+            font-weight: 600;
+        }
+        
+        /* Add to the <style> section for Edit button styling */
+        .edit-btn {
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 2px 12px;
+            font-size: 13px;
+            margin-left: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .edit-btn:hover {
+            background-color: #0056b3;
+        }
+        
+        /* In the <style> section, ensure this is present for .action-btn: */
+        .action-btn {
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 18px;
+            font-size: 16px;
+            margin-left: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .action-btn:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Malayalam:wght@400;600&display=swap" rel="stylesheet">
 </head>
@@ -310,7 +346,8 @@
             
             <div class="results" id="results">
                 <p style="text-align: center; color: #666;">Real-time transcription results will appear here...</p>
-                </div>
+            </div>
+            <button class="action-btn" id="downloadRealtimePdfBtn" onclick="downloadRealtimePDF()" disabled>Download PDF</button>
 
             <!-- Audio File Upload Section -->
             <div class="section" style="margin-top:20px; background:#f1f7ff; padding: 20px; border-radius: 10px;">
@@ -326,12 +363,15 @@
                     <div id="uploadResult" style="display: none; background: white; padding: 15px; border-radius: 5px; margin-top: 10px; border: 1px solid #ddd;">
                         <div style="margin-bottom: 10px;">
                             <strong>English:</strong>
-                            <div id="uploadEnglish" style="margin-top: 5px;"></div>
+                            <span id="uploadEnglish"></span>
+                            <button class="edit-btn" onclick="editUploadText('uploadEnglish')">Edit</button>
                         </div>
                         <div>
                             <strong>Malayalam:</strong>
-                            <div id="uploadMalayalam" style="margin-top: 5px; font-family: 'Noto Sans Malayalam', sans-serif;"></div>
+                            <span id="uploadMalayalam" style="font-family: 'Noto Sans Malayalam', sans-serif;"></span>
+                            <button class="edit-btn" onclick="editUploadText('uploadMalayalam')">Edit</button>
                         </div>
+                        <button class="action-btn" id="downloadUploadedAudioPdfBtn" onclick="downloadUploadedAudioPDF()" disabled>Download PDF</button>
                     </div>
                 </div>
             </div>
@@ -367,17 +407,26 @@
                             <span class="spinner"></span>
                         </span>
                     </button>
-            </div>
-            
+                </div>
+                
                 <div class="mt-4">
                     <h5>Translation</h5>
                     <div id="englishResult" class="result-text"></div>
                     <div id="malayalamResult" class="result-text"></div>
                 </div>
             </div>
+
+            <!-- Add this after the text translation result div in the text translation section -->
+            <div style="text-align: right; margin-top: 15px;">
+                <button onclick="downloadFinalTextPDF()" class="action-btn" id="downloadFinalTextPdfBtn" disabled>Download Final Text PDF</button>
+            </div>
         </div>
     </div>
 
+    <!-- Place all scripts here, just before </body> -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script>
         // Socket.IO connection
         const socket = io();
@@ -483,27 +532,30 @@
         function addResult(english, malayalam, timestamp, isFinal = false, audio_filename = null) {
             const results = document.getElementById('results');
             const resultItem = document.createElement('div');
-            resultItem.className = 'result-item';
-            let playBtnHtml = '';
-            if (audio_filename) {
-                playBtnHtml = `<button onclick="playAudioResult('${audio_filename}', this)" style="margin-right:10px;">▶️</button>`;
+            resultItem.className = 'result-item' + (isFinal ? ' final' : '');
+            let audioBtnHtml = '';
+            if (isFinal && audio_filename) {
+                audioBtnHtml = `<button class="action-btn" onclick="playAudioFile('${audio_filename}', this)">▶️ Play Audio</button>`;
             }
-            if (isFinal) {
-                resultItem.style.background = '#e8f5e8';
-                resultItem.style.borderLeft = '4px solid #4CAF50';
-                resultItem.innerHTML = `
-                    <div style=\"font-weight:bold;color:#2196F3;\">Final Combined Result</div>
-                    <div>${playBtnHtml}<span class=\"english\">${english}</span></div>
-                    <div class=\"malayalam\">${malayalam}</div>
-                    <div class=\"timestamp\">${new Date(timestamp * 1000).toLocaleTimeString()}</div>
-                `;
-            } else {
-                resultItem.innerHTML = `
-                    <div>${playBtnHtml}<span class=\"english\">${english}</span></div>
-                    <div class=\"malayalam\">${malayalam}</div>
-                    <div class=\"timestamp\">${new Date(timestamp * 1000).toLocaleTimeString()}</div>
-                `;
-            }
+            const formattedTime = new Date(timestamp * 1000).toLocaleTimeString();
+            const resultId = 'result_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+            const englishId = resultId + '_english';
+            const malayalamId = resultId + '_malayalam';
+
+            resultItem.innerHTML = `
+                <div style="font-size: 0.8em; color: #6c757d;">${formattedTime} ${isFinal ? '<strong>(Final)</strong>' : ''}</div>
+                ${audioBtnHtml}
+                <div>
+                    <strong>English:</strong>
+                    <span class="result-text" id="${englishId}">${english}</span>
+                    <button class="edit-btn" style="margin-left:8px; padding:2px 10px; font-size:13px;" onclick="editResultText('${englishId}')">Edit</button>
+                </div>
+                <div style="margin-top: 8px;">
+                    <strong>Malayalam:</strong>
+                    <span class="result-text malayalam-text" id="${malayalamId}">${malayalam}</span>
+                    <button class="edit-btn" style="margin-left:8px; padding:2px 10px; font-size:13px;" onclick="editResultText('${malayalamId}')">Edit</button>
+                </div>
+            `;
             // Remove placeholder text if it exists
             if (results.children.length === 1 && results.children[0].tagName === 'P') {
                 results.innerHTML = '';
@@ -512,6 +564,11 @@
             // Limit to 20 results
             while (results.children.length > 20) {
                 results.removeChild(results.lastChild);
+            }
+
+            // Enable download button if it's a final result
+            if (isFinal) {
+                document.getElementById('downloadRealtimePdfBtn').disabled = false;
             }
         }
         
@@ -742,6 +799,9 @@
                 if (!isRealtime) {
                     showTranslationSuccess('Translation completed successfully');
                 }
+
+                // Enable download button
+                document.getElementById('downloadFinalTextPdfBtn').disabled = false;
             } catch (error) {
                 console.error('Translation error:', error);
                 showTranslationError(error.message || 'Translation failed. Please try again.');
@@ -792,6 +852,9 @@
             document.querySelector('.translation-progress-bar').style.width = '0%';
             showTranslationError('');
             showTranslationSuccess('');
+
+            // Disable download button
+            document.getElementById('downloadFinalTextPdfBtn').disabled = true;
         }
         
         // Cleanup on page unload
@@ -850,6 +913,7 @@
                     resultDiv.style.display = 'block';
                     englishDiv.textContent = data.english || 'No English text detected';
                     malayalamDiv.textContent = data.malayalam || 'No Malayalam translation available';
+                    document.getElementById('downloadUploadedAudioPdfBtn').disabled = false;
                 }
             })
             .catch(err => {
@@ -883,6 +947,271 @@
             const results = document.getElementById('results');
             results.innerHTML = '<p style="text-align: center; color: #666;">Real-time transcription results will appear here...</p>';
         }
+
+        window.editResultText = function(elementId) {
+            const element = document.getElementById(elementId);
+            const originalText = element.textContent;
+            const textarea = document.createElement('textarea');
+            textarea.value = originalText;
+            textarea.style.width = '100%';
+            textarea.style.minHeight = '40px';
+            textarea.style.marginTop = '5px';
+
+            const saveBtn = document.createElement('button');
+            saveBtn.textContent = 'Save';
+            saveBtn.className = 'edit-btn';
+            saveBtn.style.marginRight = '8px';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.className = 'edit-btn';
+
+            // Find the paired Malayalam or English element
+            let pairedId, isEnglish;
+            if (elementId.endsWith('_english')) {
+                pairedId = elementId.replace('_english', '_malayalam');
+                isEnglish = true;
+            } else if (elementId.endsWith('_malayalam')) {
+                pairedId = elementId.replace('_malayalam', '_english');
+                isEnglish = false;
+            }
+
+            saveBtn.onclick = async function() {
+                element.textContent = textarea.value;
+                element.parentNode.removeChild(textarea);
+                element.parentNode.removeChild(saveBtn);
+                element.parentNode.removeChild(cancelBtn);
+
+                if (isEnglish) {
+                    // Translate the new English text
+                    const malElem = document.getElementById(pairedId);
+                    if (malElem) {
+                        malElem.textContent = 'Translating...';
+                        try {
+                            const response = await fetch('/translate', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ text: textarea.value })
+                            });
+                            const data = await response.json();
+                            if (data.translated_text) {
+                                malElem.textContent = data.translated_text;
+                            } else {
+                                malElem.textContent = '[Translation error]';
+                            }
+                        } catch (err) {
+                            malElem.textContent = '[Translation error]';
+                        }
+                    }
+                }
+            };
+
+            cancelBtn.onclick = function() {
+                element.textContent = originalText;
+                element.parentNode.removeChild(textarea);
+                element.parentNode.removeChild(saveBtn);
+                element.parentNode.removeChild(cancelBtn);
+            };
+
+            // Clear the element and add textarea and buttons
+            element.textContent = '';
+            element.parentNode.insertBefore(textarea, element.nextSibling);
+            element.parentNode.insertBefore(saveBtn, textarea.nextSibling);
+            element.parentNode.insertBefore(cancelBtn, saveBtn.nextSibling);
+            textarea.focus();
+        };
+
+        window.editUploadText = function(elementId) {
+            const element = document.getElementById(elementId);
+            const originalText = element.textContent;
+            const textarea = document.createElement('textarea');
+            textarea.value = originalText;
+            textarea.style.width = '100%';
+            textarea.style.minHeight = '40px';
+            textarea.style.marginTop = '5px';
+
+            const saveBtn = document.createElement('button');
+            saveBtn.textContent = 'Save';
+            saveBtn.className = 'edit-btn';
+            saveBtn.style.marginRight = '8px';
+
+            const cancelBtn = document.createElement('button');
+            cancelBtn.textContent = 'Cancel';
+            cancelBtn.className = 'edit-btn';
+
+            let pairedId, isEnglish;
+            if (elementId === 'uploadEnglish') {
+                pairedId = 'uploadMalayalam';
+                isEnglish = true;
+            } else if (elementId === 'uploadMalayalam') {
+                pairedId = 'uploadEnglish';
+                isEnglish = false;
+            }
+
+            saveBtn.onclick = async function() {
+                element.textContent = textarea.value;
+                element.parentNode.removeChild(textarea);
+                element.parentNode.removeChild(saveBtn);
+                element.parentNode.removeChild(cancelBtn);
+
+                if (isEnglish) {
+                    // Translate the new English text
+                    const malElem = document.getElementById(pairedId);
+                    if (malElem) {
+                        malElem.textContent = 'Translating...';
+                        try {
+                            const response = await fetch('/translate', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ text: textarea.value })
+                            });
+                            const data = await response.json();
+                            if (data.translated_text) {
+                                malElem.textContent = data.translated_text;
+                            } else {
+                                malElem.textContent = '[Translation error]';
+                            }
+                        } catch (err) {
+                            malElem.textContent = '[Translation error]';
+                        }
+                    }
+                }
+            };
+
+            cancelBtn.onclick = function() {
+                element.textContent = originalText;
+                element.parentNode.removeChild(textarea);
+                element.parentNode.removeChild(saveBtn);
+                element.parentNode.removeChild(cancelBtn);
+            };
+
+            // Clear the element and add textarea and buttons
+            element.textContent = '';
+            element.parentNode.insertBefore(textarea, element.nextSibling);
+            element.parentNode.insertBefore(saveBtn, textarea.nextSibling);
+            element.parentNode.insertBefore(cancelBtn, saveBtn.nextSibling);
+            textarea.focus();
+        };
+
+        // In the script, add this function:
+        window.downloadFinalTextPDF = function() {
+            const english = document.getElementById('englishResult') ? document.getElementById('englishResult').textContent.trim() : '';
+            const malayalam = document.getElementById('malayalamResult') ? document.getElementById('malayalamResult').textContent.trim() : '';
+            if (!english && !malayalam) {
+                alert('No final text to download.');
+                return;
+            }
+            const container = document.createElement('div');
+            container.style.padding = '20px';
+            container.innerHTML = `
+                <h2>Final Text Translation</h2>
+                <p><strong>English:</strong> ${english}</p>
+                <p><strong>Malayalam:</strong> <span class="malayalam-text">${malayalam}</span></p>
+            `;
+            document.body.appendChild(container);
+            generatePdf(container, 'final_text_translation.pdf').finally(() => {
+                document.body.removeChild(container);
+            });
+        };
+
+        async function generatePdf(elementToCapture, filename) {
+            try {
+                if (!window.html2canvas) throw new Error('html2canvas is not loaded');
+                if (!window.jspdf) throw new Error('jsPDF is not loaded');
+                elementToCapture.style.background = 'white';
+                elementToCapture.style.color = 'black';
+                elementToCapture.style.position = 'fixed';
+                elementToCapture.style.left = '0';
+                elementToCapture.style.top = '0';
+                elementToCapture.style.zIndex = '9999';
+                elementToCapture.style.width = '800px';
+                elementToCapture.style.visibility = 'visible';
+
+                const canvas = await html2canvas(elementToCapture, { scale: 2, useCORS: true, logging: true });
+                const imgData = canvas.toDataURL('image/png');
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+                pdf.save(filename);
+            } catch (error) {
+                console.error('Error generating PDF:', error);
+                alert('Could not generate PDF. ' + error.message);
+            }
+        }
+
+        window.downloadUploadedAudioPDF = async function() {
+            const english = document.getElementById('uploadEnglish').textContent.trim();
+            const malayalam = document.getElementById('uploadMalayalam').textContent.trim();
+            if (!english && !malayalam) {
+                alert('No result to download.');
+                return;
+            }
+            const container = document.createElement('div');
+            container.style.padding = '20px';
+            container.innerHTML = `
+                <h2>Uploaded Audio Transcription</h2>
+                <p><strong>English:</strong> ${english}</p>
+                <p><strong>Malayalam:</strong> <span class="malayalam-text">${malayalam}</span></p>
+            `;
+            document.body.appendChild(container);
+            await generatePdf(container, 'uploaded_audio_result.pdf');
+            document.body.removeChild(container);
+        };
+
+        // Add this function to the script:
+        window.downloadRealtimePDF = async function() {
+            const resultsDiv = document.getElementById('results');
+            const finalResults = resultsDiv.querySelectorAll('.result-item.final');
+            if (!finalResults.length) {
+                alert('No final result to download.');
+                return;
+            }
+            const lastFinal = finalResults[0]; // Most recent is prepended
+            const container = document.createElement('div');
+            container.style.padding = '20px';
+            container.innerHTML = `
+                <h2>Real-time Audio Transcription</h2>
+                ${lastFinal.innerHTML}
+            `;
+            document.body.appendChild(container);
+            await generatePdf(container, 'realtime_audio_result.pdf');
+            document.body.removeChild(container);
+        };
+
+        // Add this function to the script:
+        window.playAudioFile = function(filename, btn) {
+            // If another audio is playing, pause it and reset its button
+            if (window.currentAudio && window.currentAudio !== btn.audio) {
+                window.currentAudio.pause();
+                if (window.currentAudioBtn) {
+                    window.currentAudioBtn.textContent = '▶️ Play Audio';
+                }
+            }
+            // If this button already has an audio object
+            if (btn.audio) {
+                if (btn.audio.paused) {
+                    btn.audio.play();
+                    btn.textContent = '⏸ Pause Audio';
+                    window.currentAudio = btn.audio;
+                    window.currentAudioBtn = btn;
+                } else {
+                    btn.audio.pause();
+                    btn.textContent = '▶️ Play Audio';
+                }
+            } else {
+                // Create a new audio object and play
+                const audio = new Audio(`/audio/${filename}`);
+                btn.audio = audio;
+                window.currentAudio = audio;
+                window.currentAudioBtn = btn;
+                audio.play();
+                btn.textContent = '⏸ Pause Audio';
+                audio.onended = () => { btn.textContent = '▶️ Play Audio'; };
+                audio.onpause = () => { btn.textContent = '▶️ Play Audio'; };
+            }
+        };
     </script>
 </body>
 </html>
